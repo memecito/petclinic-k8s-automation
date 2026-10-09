@@ -19,6 +19,7 @@
       ansible.builtin.dnf:
         name: "*"
         state: latest
+        security: true   # solo erratas de seguridad, como dice el nombre de la tarea
 
     - name: Open firewall ports
       ansible.builtin.firewalld:
@@ -56,7 +57,7 @@
     - name: Configurar permisos de K3s
       ansible.builtin.file:
         path: "{{ kubeconfig_path }}"
-        mode: '0644'
+        mode: '0600'   # credenciales de admin del clúster: solo su propietario
         owner: "{{ target_user }}" # Ahora es dinámico
 
 
@@ -150,7 +151,8 @@
               tag: "{{ jenkins_tag }}"
             admin:
               username: "admin"
-              password: "jenkins-1234" # Corregido typo 'passoword'
+              # Sin contraseña en el código: el chart genera una aleatoria y la guarda
+              # en el Secret "jenkins" (clave jenkins-admin-password).
             serviceType: NodePort
             nodePort: 32195
 
@@ -161,4 +163,7 @@
 
     - name: URL de acceso a Jenkins
       ansible.builtin.debug:
-        msg: "Acceso: http://{{ ansible_default_ipv4.address }}:{{ jenkins_port.stdout }} (Admin / jenkins-1234)"
+        msg: >-
+          Acceso: http://{{ ansible_default_ipv4.address }}:{{ jenkins_port.stdout }} (usuario admin).
+          Contraseña: kubectl get secret jenkins -n devops-tools
+          -o jsonpath='{.data.jenkins-admin-password}' | base64 -d
