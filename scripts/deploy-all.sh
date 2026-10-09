@@ -34,6 +34,15 @@ deploy_wave() {
                 export CONTAINER_PORT=8761 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8761 ;;
             "admin-server") 
                 export CONTAINER_PORT=9090 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=9090 ;;
+            # Puertos reales de cada servicio (los mismos a los que apunta prometheus.yml)
+            "customers-service")
+                export CONTAINER_PORT=8081 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8081 ;;
+            "visits-service")
+                export CONTAINER_PORT=8082 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8082 ;;
+            "vets-service")
+                export CONTAINER_PORT=8083 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8083 ;;
+            "genai-service")
+                export CONTAINER_PORT=8084 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8084 ;;
             *) 
                 export CONTAINER_PORT=8080 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8080 ;;
         esac

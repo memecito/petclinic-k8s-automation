@@ -28,6 +28,10 @@ do
         "spring-petclinic-config-server") export CONTAINER_PORT=8888 ;;
         "spring-petclinic-discovery-server") export CONTAINER_PORT=8761 ;;
         "spring-petclinic-admin-server") export CONTAINER_PORT=9090 ;;
+        "spring-petclinic-customers-service") export CONTAINER_PORT=8081 ;;
+        "spring-petclinic-visits-service") export CONTAINER_PORT=8082 ;;
+        "spring-petclinic-vets-service") export CONTAINER_PORT=8083 ;;
+        "spring-petclinic-genai-service") export CONTAINER_PORT=8084 ;;
         *) export CONTAINER_PORT=8080 ;;
     esac
 
