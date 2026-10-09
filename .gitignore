@@ -1,4 +1,6 @@
 .vagrant
 k8s-generated 
 *.jar
-jar-files/
+jar-files/# Logs de ejecución de Vagrant/Ansible: pueden contener rutas e IPs del equipo local
+log/
+*.log
