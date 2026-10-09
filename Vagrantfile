@@ -30,8 +30,10 @@ Vagrant.configure("2") do |config|
     ansible-galaxy collection install kubernetes.core containers.podman
   SHELL
 
-  config.vm.provision "ansible" do |ansible|
-    ansible.playbook = "provisioning/playbook.yml"
+  # ansible_local: Ansible se ejecuta DENTRO de la VM (lo instala el paso anterior),
+  # así el host solo necesita Vagrant y VirtualBox.
+  config.vm.provision "ansible_local" do |ansible|
+    ansible.playbook = "provisioning/playbook.yaml"
   end
 
   # PASO 2: Construcción de Artefactos e Imágenes
