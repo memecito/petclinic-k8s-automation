@@ -9,6 +9,9 @@
     jenkins_chart_version: "5.8.122"   # Versión específica del Chart de Jenkins
     jenkins_tag: "2.528.3-lts"        # Versión específica de Jenkins
     registry_image_tag: "2.8.3"      # Versión específica de la imagen del Registry
+    app_repo: "https://github.com/spring-petclinic/spring-petclinic-microservices.git"
+    app_version: "v3.4.1"            # Tag fijo del código de la app (build.sh espera JARs 3.4.1)
+    app_dir: "/home/vagrant/app"
     kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
     # Esto permite que Vagrant o Terraform pasen un usuario distinto si fuera necesario
     target_user: "{{ ansible_user | default(ansible_user_id) }}"
@@ -128,6 +131,31 @@
         state: present
 
     # --- HELM Y JENKINS ---
+    # --- Código de la aplicación (versión fija) -----------------------------
+    # Se clona el repo original en un tag concreto: el despliegue es reproducible
+    # y no depende de ningún fork. Clonado y compilado como el usuario vagrant,
+    # no como root.
+    - name: Clonar Spring Petclinic Microservices en una versión fija
+      become: true
+      become_user: vagrant
+      ansible.builtin.git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_dir }}"
+        version: "{{ app_version }}"
+        depth: 1
+
+    - name: Compilar los microservicios con Maven
+      become: true
+      become_user: vagrant
+      ansible.builtin.command: ./mvnw -B clean package -DskipTests
+      args:
+        chdir: "{{ app_dir }}"
+        creates: "{{ app_dir }}/spring-petclinic-api-gateway/target/spring-petclinic-api-gateway-3.4.1.jar"
+      register: maven_build
+      until: maven_build is succeeded
+      retries: 3
+      delay: 10
+
     - name: Descargar binario de Helm (Versión Pinched)
       ansible.builtin.unarchive:
         src: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
