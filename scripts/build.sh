@@ -5,7 +5,7 @@ MAVEN_VERSION="3.4.1"
 REGISTRY="localhost:5000"
 IP_VM=$(hostname -I | awk '{print $1}')
 
-cd /home/vagrant/app/
+cd /home/vagrant/app/ || exit 1
 
 MICROSERVICIOS=(
   "spring-petclinic-admin-server"
@@ -41,16 +41,16 @@ do
     # 2. Construcción (Eliminamos --cpus para evitar el error 'unknown flag')
     echo "📦 Construyendo imagen: $FULL_IMAGE_NAME"
     docker build --no-cache -f ./docker/Dockerfile \
-      --build-arg ARTIFACT_NAME=target/$JAR_NAME \
-      --build-arg EXPOSED_PORT=$CONTAINER_PORT \
-      -t $FULL_IMAGE_NAME ./$SERVICE
+      --build-arg ARTIFACT_NAME="target/$JAR_NAME" \
+      --build-arg EXPOSED_PORT="$CONTAINER_PORT" \
+      -t "$FULL_IMAGE_NAME" "./$SERVICE"
 
     # 3. Subida inmediata al registro
     echo "🚀 Subiendo a registro local..."
-    docker push $FULL_IMAGE_NAME
+    docker push "$FULL_IMAGE_NAME"
 
     # 4. Limpieza de imagen local para ahorrar RAM/Disco
-    docker rmi $FULL_IMAGE_NAME
+    docker rmi "$FULL_IMAGE_NAME"
     sync
 done
 

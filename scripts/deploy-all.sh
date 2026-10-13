@@ -48,10 +48,10 @@ deploy_wave() {
         esac
 
         echo "⚙️  Generando YAML para: $SERVICE_NAME"
-        envsubst < k8s-template.yaml > k8s-generated/$SERVICE.yaml
+        envsubst < k8s-template.yaml > "k8s-generated/$SERVICE.yaml"
         
         echo "📦 Aplicando $SERVICE_NAME..."
-        kubectl apply -f k8s-generated/$SERVICE.yaml
+        kubectl apply -f "k8s-generated/$SERVICE.yaml"
     done
 }
 
@@ -73,10 +73,10 @@ deploy_monitoring() {
         fi
 
         echo "⚙️  Generando YAML: k8s-generated/$TOOL.yaml"
-        envsubst < k8s-template.yaml > k8s-generated/$TOOL.yaml
+        envsubst < k8s-template.yaml > "k8s-generated/$TOOL.yaml"
         
         echo "📦 Aplicando en k3s: $TOOL..."
-        kubectl apply -f k8s-generated/$TOOL.yaml
+        kubectl apply -f "k8s-generated/$TOOL.yaml"
     done
 }
 
@@ -93,19 +93,6 @@ sleep 15
 deploy_wave "${WAVE_3[@]}"
 deploy_wave "${WAVE_4[@]}"
 deploy_monitoring "${WAVE_5[@]}"
-
-
-# Ahora los nombres son los "reales" que espera Spring Cloud
-MICROSERVICIOS=(
-    "admin-server"
-    "api-gateway"
-    "config-server"
-    "customers-service"
-    "discovery-server"
-    "genai-service"
-    "vets-service"
-    "visits-service"
-)
 
 
 echo "---"
