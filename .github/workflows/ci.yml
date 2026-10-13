@@ -1,4 +1,4 @@
-# Comprobaciones estáticas en cada PR y push a main.
+# Comprobaciones estáticas en cada PR y push a master.
 # No levanta la VM: valida scripts, playbook y manifiestos, y busca secretos.
 # Las actions y las imágenes van fijadas por SHA/digest, no por tag (un tag se puede mover).
 name: ci
@@ -6,7 +6,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
 
 permissions:
   contents: read
