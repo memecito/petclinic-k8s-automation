@@ -34,15 +34,24 @@ deploy_wave() {
                 export CONTAINER_PORT=8761 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8761 ;;
             "admin-server") 
                 export CONTAINER_PORT=9090 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=9090 ;;
+            # Puertos reales de cada servicio (los mismos a los que apunta prometheus.yml)
+            "customers-service")
+                export CONTAINER_PORT=8081 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8081 ;;
+            "visits-service")
+                export CONTAINER_PORT=8082 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8082 ;;
+            "vets-service")
+                export CONTAINER_PORT=8083 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8083 ;;
+            "genai-service")
+                export CONTAINER_PORT=8084 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8084 ;;
             *) 
                 export CONTAINER_PORT=8080 && export SERVICE_TYPE="ClusterIP" && export EXTERNAL_PORT=8080 ;;
         esac
 
         echo "⚙️  Generando YAML para: $SERVICE_NAME"
-        envsubst < k8s-template.yaml > k8s-generated/$SERVICE.yaml
+        envsubst < k8s-template.yaml > "k8s-generated/$SERVICE.yaml"
         
         echo "📦 Aplicando $SERVICE_NAME..."
-        kubectl apply -f k8s-generated/$SERVICE.yaml
+        kubectl apply -f "k8s-generated/$SERVICE.yaml"
     done
 }
 
@@ -64,10 +73,10 @@ deploy_monitoring() {
         fi
 
         echo "⚙️  Generando YAML: k8s-generated/$TOOL.yaml"
-        envsubst < k8s-template.yaml > k8s-generated/$TOOL.yaml
+        envsubst < k8s-template.yaml > "k8s-generated/$TOOL.yaml"
         
         echo "📦 Aplicando en k3s: $TOOL..."
-        kubectl apply -f k8s-generated/$TOOL.yaml
+        kubectl apply -f "k8s-generated/$TOOL.yaml"
     done
 }
 
@@ -84,19 +93,6 @@ sleep 15
 deploy_wave "${WAVE_3[@]}"
 deploy_wave "${WAVE_4[@]}"
 deploy_monitoring "${WAVE_5[@]}"
-
-
-# Ahora los nombres son los "reales" que espera Spring Cloud
-MICROSERVICIOS=(
-    "admin-server"
-    "api-gateway"
-    "config-server"
-    "customers-service"
-    "discovery-server"
-    "genai-service"
-    "vets-service"
-    "visits-service"
-)
 
 
 echo "---"

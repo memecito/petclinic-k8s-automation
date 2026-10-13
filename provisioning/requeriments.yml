@@ -1,4 +1,0 @@
-# requirements.yml
-collections:
-  - name: kubernetes.core
-  - name: containers.podman

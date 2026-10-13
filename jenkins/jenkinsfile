@@ -12,7 +12,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 // Clonamos tu repositorio (ajusta la URL)
-                git branch: 'main', url: 'https://github.com/tu-usuario/spring-petclinic-microservices.git'
+                git branch: 'main', url: 'https://github.com/spring-petclinic/spring-petclinic-microservices.git'  // v2 (en curso): fijar a un tag como en el playbook
             }
         }
 
