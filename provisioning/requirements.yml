@@ -1,0 +1,9 @@
+# Colecciones de Ansible que usa playbook.yaml.
+# El Vagrantfile las instala en la ruta del sistema para que las vea ansible_local.
+collections:
+  - name: ansible.posix          # firewalld
+    version: ">=1.5.0,<3.0.0"
+  - name: kubernetes.core        # helm, helm_repository
+    version: ">=3.0.0,<7.0.0"
+  - name: containers.podman      # registry de imágenes
+    version: ">=1.10.0,<2.0.0"

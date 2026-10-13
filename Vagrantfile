@@ -26,8 +26,10 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     sudo dnf install -y epel-release
     sudo dnf install -y ansible-core
-    # Instalamos las colecciones para que estén listas cuando entre el siguiente provisioner
-    ansible-galaxy collection install kubernetes.core containers.podman
+    # Este provisioner corre como root y ansible_local como vagrant: instalamos las
+    # colecciones en la ruta del sistema para que el playbook las encuentre.
+    ansible-galaxy collection install -r /home/vagrant/provisioning_files/provisioning/requirements.yml \
+      -p /usr/share/ansible/collections
   SHELL
 
   # ansible_local: Ansible se ejecuta DENTRO de la VM (lo instala el paso anterior),

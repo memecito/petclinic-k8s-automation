@@ -1,6 +1,7 @@
 ---
-- hosts: all
-  become: yes
+- name: Aprovisionar K3s, registry, app y Jenkins
+  hosts: all
+  become: true
 
   vars:
     # Definimos las versiones como variables para facilitar su mantenimiento
@@ -21,15 +22,15 @@
     - name: Upgrade all packages (Security only)
       ansible.builtin.dnf:
         name: "*"
-        state: latest
+        state: latest  # noqa: package-latest
         security: true   # solo erratas de seguridad, como dice el nombre de la tarea
 
     - name: Open firewall ports
-      ansible.builtin.firewalld:
+      ansible.posix.firewalld:
         port: "{{ item }}"
-        permanent: yes
+        permanent: true
         state: enabled
-        immediate: yes
+        immediate: true
       loop:
         - 8080/tcp         # Jenkins
         - 5000/tcp         # Registry
@@ -88,9 +89,19 @@
               endpoint:
                 - "http://{{ ansible_default_ipv4.address }}:5000"
 
-    - name: Descargar e instalar K3s con versión específica
-      ansible.builtin.shell: |
-        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" INSTALL_K3S_EXEC="--disable traefik" sh -
+    # Sin "curl | sh": se descarga el instalador del mismo tag que la versión de K3s
+    # (no el de get.k3s.io, que cambia) y se ejecuta como un paso aparte.
+    - name: Descargar el instalador de K3s de su versión
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/k3s-io/k3s/{{ k3s_version }}/install.sh"
+        dest: /usr/local/bin/k3s-install.sh
+        mode: '0700'
+
+    - name: Instalar K3s con versión específica
+      ansible.builtin.command: /usr/local/bin/k3s-install.sh
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+        INSTALL_K3S_EXEC: "--disable traefik"
       args:
         creates: /usr/local/bin/k3s
 
@@ -118,7 +129,7 @@
         name: registry
         image: "registry:{{ registry_image_tag }}"
         state: started
-        recreate: yes
+        recreate: true
         publish:
           - "5000:5000"
 
@@ -160,40 +171,30 @@
       ansible.builtin.unarchive:
         src: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
         dest: /tmp
-        remote_src: yes
+        remote_src: true
 
     - name: Mover Helm a /usr/bin
       ansible.builtin.copy:
         src: /tmp/linux-amd64/helm
         dest: /usr/bin/helm
         mode: '0755'
-        remote_src: yes
+        remote_src: true
 
     - name: Asegurar que no hay restos de plugins corruptos
       ansible.builtin.file:
         path: "/root/.local/share/helm/plugins/helm-diff"
         state: absent
 
-    # - name: Instalar plugin helm-diff
-    #   ansible.builtin.shell: |
-    #     helm plugin install https://github.com/databus23/helm-diff
-    #   register: helm_plugin_result
-    #   # Esto evita que falle si por alguna razón el rastro persiste
-    #   failed_when: 
-    #     - helm_plugin_result.rc != 0 
-    #     - "'already installed' not in helm_plugin_result.stderr"
-    #   changed_when: "'Installed plugin' in helm_plugin_result.stdout"
-
     - name: Instalar dependencias de Python para K8s
       ansible.builtin.dnf:
-        name: 
+        name:
           - python3-pip
           - python3-pyyaml
         state: present
 
     - name: Instalar librerías de python (Versiones Pinched)
       ansible.builtin.pip:
-        name: 
+        name:
           - kubernetes==31.0.0
           - jsonpatch==1.33
 
@@ -222,9 +223,10 @@
             nodePort: 32195
 
     - name: Obtener el puerto de Jenkins
-      ansible.builtin.shell: |
+      ansible.builtin.command: >-
         kubectl get svc jenkins -n devops-tools --kubeconfig /etc/rancher/k3s/k3s.yaml -o jsonpath='{.spec.ports[0].nodePort}'
       register: jenkins_port
+      changed_when: false   # solo consulta, no cambia nada
 
     - name: URL de acceso a Jenkins
       ansible.builtin.debug:
