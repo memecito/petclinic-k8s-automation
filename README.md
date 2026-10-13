@@ -1,5 +1,7 @@
 # 🐾 petclinic-k8s-automation
 
+[![ci](https://github.com/memecito/petclinic-k8s-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/memecito/petclinic-k8s-automation/actions/workflows/ci.yml)
+
 > De una máquina vacía a **10 microservicios en Kubernetes con monitorización**, con un solo comando: `vagrant up`.
 
 Laboratorio de automatización de plataforma: aprovisiona una VM, instala **K3s**, monta un
@@ -70,7 +72,8 @@ Los servicios Java tardan unos minutos en estar disponibles después del desplie
 
 ## Qué hace `vagrant up`, paso a paso
 
-1. **Vagrant** crea la VM (Rocky Linux 8) e instala `ansible-core` y las colecciones necesarias.
+1. **Vagrant** crea la VM (Rocky Linux 8) e instala `ansible-core` y las colecciones de
+   [`requirements.yml`](provisioning/requirements.yml).
 2. **Ansible** ([`provisioning/playbook.yaml`](provisioning/playbook.yaml)):
    - actualizaciones de seguridad y puertos del firewall;
    - Podman y un **registry privado** de imágenes, configurados para que Podman y K3s lo usen;
@@ -117,7 +120,11 @@ Y lo que **sí** está cuidado:
 - el kubeconfig con permisos `0600`;
 - sin contraseñas en el código;
 - solo actualizaciones de seguridad del sistema;
-- versiones fijas.
+- versiones fijas;
+- K3s se instala con el instalador **de su propio tag**, descargado y ejecutado aparte (sin `curl | sh`);
+- **CI en cada PR** ([`ci.yml`](.github/workflows/ci.yml)): `shellcheck`, `ansible-lint` (perfil
+  *production*), `kubeconform` sobre los manifiestos renderizados y `gitleaks` en todo el historial,
+  con las actions y las imágenes **fijadas por SHA/digest**.
 
 ## Qué haría distinto (y es la hoja de ruta de la v2)
 
@@ -128,7 +135,6 @@ Y lo que **sí** está cuidado:
   [`chart-folder/`](chart-folder), solo para el gateway).
 - **Pipeline CI/CD con Jenkins** (en curso en [`jenkins/`](jenkins)) y despliegue **GitOps** con
   Argo CD.
-- **CI en este repo:** `shellcheck`, `ansible-lint`, `kubeconform` y `gitleaks` en cada PR.
 
 ## Problemas conocidos
 
