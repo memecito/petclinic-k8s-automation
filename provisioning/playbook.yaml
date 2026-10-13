@@ -14,8 +14,12 @@
     app_version: "v3.4.1"            # Tag fijo del código de la app (build.sh espera JARs 3.4.1)
     app_dir: "/home/vagrant/app"
     kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
-    # Esto permite que Vagrant o Terraform pasen un usuario distinto si fuera necesario
-    target_user: "{{ ansible_user | default(ansible_user_id) }}"
+    # Usuario sin privilegios que usa el clúster (kubectl y los módulos de Helm, que con
+    # ansible_local leen el kubeconfig como este usuario, no como root)
+    kube_user: "vagrant"
+    kube_user_config: "/home/{{ kube_user }}/.kube/config"
+    # IP de la red privada (la que se usa desde el host). ansible_default_ipv4 es la NAT 10.0.2.15
+    access_ip: "{{ ansible_facts['eth1']['ipv4']['address'] | default(ansible_default_ipv4.address) }}"
 
   tasks:
     # --- PREPARACIÓN DEL S.O. ---
@@ -24,6 +28,33 @@
         name: "*"
         state: latest  # noqa: package-latest
         security: true   # solo erratas de seguridad, como dice el nombre de la tarea
+
+    # La box trae firewalld instalado pero parado: sin el servicio no se pueden abrir puertos
+    - name: Instalar y arrancar firewalld
+      block:
+        - name: Instalar firewalld
+          ansible.builtin.dnf:
+            name: firewalld
+            state: present
+
+        - name: Arrancar firewalld
+          ansible.builtin.systemd_service:
+            name: firewalld
+            state: started
+            enabled: true
+
+    # Recomendación de K3s con firewalld: confiar en las redes de pods y de Services,
+    # o el tráfico entre pods y hacia CoreDNS se bloquea
+    - name: Confiar en las redes internas de K3s
+      ansible.posix.firewalld:
+        source: "{{ item }}"
+        zone: trusted
+        permanent: true
+        state: enabled
+        immediate: true
+      loop:
+        - 10.42.0.0/16     # pods
+        - 10.43.0.0/16     # Services
 
     - name: Open firewall ports
       ansible.posix.firewalld:
@@ -37,6 +68,7 @@
         - 6443/tcp         # K3s API
         - 80/tcp           # HTTP
         - 443/tcp          # HTTPS
+        - 3000/tcp         # Grafana (LoadBalancer de K3s)
         - 30000-32767/tcp   # Rango NodePort de K8s
 
     # --- INSTALACIÓN DE MOTORES (PODMAN) ---
@@ -105,12 +137,30 @@
       args:
         creates: /usr/local/bin/k3s
 
-    - name: Configurar permisos de K3s
+    # El kubeconfig de /etc se queda como lo deja K3s (root, 0600): K3s lo reescribe al reiniciar.
+    # El usuario recibe su propia copia, también 0600: son credenciales de admin del clúster.
+    - name: Crear ~/.kube del usuario del clúster
       ansible.builtin.file:
-        path: "{{ kubeconfig_path }}"
-        mode: '0600'   # credenciales de admin del clúster: solo su propietario
-        owner: "{{ target_user }}" # Ahora es dinámico
+        path: "/home/{{ kube_user }}/.kube"
+        state: directory
+        owner: "{{ kube_user }}"
+        group: "{{ kube_user }}"
+        mode: '0700'
 
+    - name: Copiar el kubeconfig para el usuario del clúster
+      ansible.builtin.copy:
+        src: "{{ kubeconfig_path }}"
+        dest: "{{ kube_user_config }}"
+        remote_src: true
+        owner: "{{ kube_user }}"
+        group: "{{ kube_user }}"
+        mode: '0600'
+
+    # El kubectl de K3s usa /etc/rancher/k3s/k3s.yaml salvo que se indique KUBECONFIG
+    - name: Usar el kubeconfig propio en la sesión del usuario
+      ansible.builtin.lineinfile:
+        path: "/home/{{ kube_user }}/.bashrc"
+        line: "export KUBECONFIG=$HOME/.kube/config"
 
     - name: Crear symlink para kubectl
       ansible.builtin.file:
@@ -134,11 +184,11 @@
           - "5000:5000"
 
     # --- JAVA Y MAVEN ---
-    - name: Instalar Java 17 y Maven
+    # Sin el paquete "maven": en Rocky 8 arrastra Java 8 y lo deja como java por defecto.
+    # La compilación usa el wrapper ./mvnw, que descarga su propia versión de Maven.
+    - name: Instalar Java 17
       ansible.builtin.dnf:
-        name:
-          - java-17-openjdk-devel
-          - maven
+        name: java-17-openjdk-devel
         state: present
 
     # --- HELM Y JENKINS ---
@@ -159,6 +209,8 @@
       become: true
       become_user: vagrant
       ansible.builtin.command: ./mvnw -B clean package -DskipTests
+      environment:
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk   # no depender del java por defecto del sistema
       args:
         chdir: "{{ app_dir }}"
         creates: "{{ app_dir }}/spring-petclinic-api-gateway/target/spring-petclinic-api-gateway-3.4.1.jar"
@@ -185,42 +237,53 @@
         path: "/root/.local/share/helm/plugins/helm-diff"
         state: absent
 
-    - name: Instalar dependencias de Python para K8s
+    # El Python del sistema de Rocky 8 es 3.6 y las librerías actuales ya no lo admiten.
+    # Las tareas de pip y Helm usan el Python 3.12 que trae ansible-core; el resto sigue con el
+    # del sistema, porque dnf y firewalld necesitan sus bindings.
+    - name: Instalar Python 3.12 con pip y PyYAML
       ansible.builtin.dnf:
         name:
-          - python3-pip
-          - python3-pyyaml
+          - python3.12-pip
+          - python3.12-pyyaml
         state: present
 
-    - name: Instalar librerías de python (Versiones Pinched)
-      ansible.builtin.pip:
-        name:
-          - kubernetes==31.0.0
-          - jsonpatch==1.33
+    - name: Librerías de Python y Jenkins con Helm (Python 3.12)
+      vars:
+        ansible_python_interpreter: /usr/bin/python3.12
+      block:
+        - name: Instalar librerías de python (Versiones Pinched)
+          ansible.builtin.pip:
+            name:
+              - kubernetes==31.0.0
+              - jsonpatch==1.33
 
-    - name: Añadir repo de Helm de Jenkins
-      kubernetes.core.helm_repository:
-        name: jenkins
-        repo_url: "https://charts.jenkins.io"
+        - name: Añadir repo de Helm de Jenkins
+          kubernetes.core.helm_repository:
+            name: jenkins
+            repo_url: "https://charts.jenkins.io"
 
-    - name: Instalar Jenkins con Helm (Versión del Chart Pinched)
-      kubernetes.core.helm:
-        name: jenkins
-        chart_ref: jenkins/jenkins
-        chart_version: "{{ jenkins_chart_version }}" # <-- Esto evita cambios de sintaxis futuros
-        release_namespace: devops-tools
-        create_namespace: true
-        kubeconfig: /etc/rancher/k3s/k3s.yaml
-        values:
-          controller:
-            image:
-              tag: "{{ jenkins_tag }}"
-            admin:
-              username: "admin"
-              # Sin contraseña en el código: el chart genera una aleatoria y la guarda
-              # en el Secret "jenkins" (clave jenkins-admin-password).
-            serviceType: NodePort
-            nodePort: 32195
+        - name: Instalar Jenkins con Helm (Versión del Chart Pinched)
+          kubernetes.core.helm:
+            name: jenkins
+            chart_ref: jenkins/jenkins
+            chart_version: "{{ jenkins_chart_version }}" # <-- Esto evita cambios de sintaxis futuros
+            release_namespace: devops-tools
+            create_namespace: true
+            kubeconfig: "{{ kube_user_config }}"
+            values:
+              controller:
+                image:
+                  tag: "{{ jenkins_tag }}"
+                # El chart fija la versión de sus plugins principales, pero las dependencias se
+                # resuelven a la última: con el tiempo dejan de ser compatibles (git exigía un
+                # configuration-as-code más nuevo que el fijado). Se actualizan todos a la vez.
+                installLatestSpecifiedPlugins: true
+                admin:
+                  username: "admin"
+                  # Sin contraseña en el código: el chart genera una aleatoria y la guarda
+                  # en el Secret "jenkins" (clave jenkins-admin-password).
+                serviceType: NodePort
+                nodePort: 32195
 
     - name: Obtener el puerto de Jenkins
       ansible.builtin.command: >-
@@ -231,6 +294,6 @@
     - name: URL de acceso a Jenkins
       ansible.builtin.debug:
         msg: >-
-          Acceso: http://{{ ansible_default_ipv4.address }}:{{ jenkins_port.stdout }} (usuario admin).
+          Acceso: http://{{ access_ip }}:{{ jenkins_port.stdout }} (usuario admin).
           Contraseña: kubectl get secret jenkins -n devops-tools
           -o jsonpath='{.data.jenkins-admin-password}' | base64 -d

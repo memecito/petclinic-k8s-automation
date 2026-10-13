@@ -42,9 +42,13 @@ flowchart LR
 
 ## Requisitos
 
-- **Vagrant** ≥ 2.3 y **VirtualBox**. Ansible **no** hace falta en el host: se ejecuta dentro de la VM.
+- **Vagrant** ≥ 2.3, **VirtualBox** y **rsync**. Ansible **no** hace falta en el host: se ejecuta dentro de la VM.
 - **12 GB de RAM** en el host (la VM usa 6 GB) y 4 núcleos.
-- Plugin opcional: `vagrant plugin install vagrant-disksize` (disco de 40 GB).
+- **~20 GB libres en disco**: el disco de la VM crece con las dependencias de Maven y las imágenes.
+- Plugin recomendado: `vagrant plugin install vagrant-disksize` (disco de 40 GB; el aprovisionamiento
+  amplía la partición y el sistema de ficheros).
+- Linux con kernel ≥ 6.12: KVM reserva VT-x al cargarse y VirtualBox no arranca
+  (`VERR_VMX_IN_VMX_ROOT_MODE`). Solución: `options kvm enable_virt_at_load=0` en `/etc/modprobe.d/`.
 - Conexión a internet: se descargan K3s, Helm, imágenes base y dependencias de Maven.
 
 ## Quickstart
@@ -55,7 +59,8 @@ cd petclinic-k8s-automation
 vagrant up            # la primera vez tarda bastante: compila 8 microservicios
 ```
 
-Para seguir el arranque: `vagrant ssh` y `watch kubectl get pods`.
+Para seguir el arranque: `vagrant ssh` y `watch kubectl get pods` (el usuario `vagrant` tiene su
+propio kubeconfig en `~/.kube/config`).
 Para destruirlo todo: `vagrant destroy -f`.
 
 ## Acceso a los servicios
@@ -72,8 +77,8 @@ Los servicios Java tardan unos minutos en estar disponibles después del desplie
 
 ## Qué hace `vagrant up`, paso a paso
 
-1. **Vagrant** crea la VM (Rocky Linux 8) e instala `ansible-core` y las colecciones de
-   [`requirements.yml`](provisioning/requirements.yml).
+1. **Vagrant** crea la VM (Rocky Linux 8, arranque UEFI), copia el repo con rsync, amplía el disco
+   e instala `ansible-core` y las colecciones de [`requirements.yml`](provisioning/requirements.yml).
 2. **Ansible** ([`provisioning/playbook.yaml`](provisioning/playbook.yaml)):
    - actualizaciones de seguridad y puertos del firewall;
    - Podman y un **registry privado** de imágenes, configurados para que Podman y K3s lo usen;
@@ -135,6 +140,19 @@ Y lo que **sí** está cuidado:
   [`chart-folder/`](chart-folder), solo para el gateway).
 - **Pipeline CI/CD con Jenkins** (en curso en [`jenkins/`](jenkins)) y despliegue **GitOps** con
   Argo CD.
+
+## Lo que salió al validarlo de principio a fin
+
+El CI revisa el código, pero solo un `vagrant up` completo encontró estos fallos:
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| La VM se queda en `grub>` | La box de Rocky 8.10 no trae `grub.cfg` para arranque BIOS | Firmware UEFI |
+| No monta la carpeta del repo | La box no trae las Guest Additions de VirtualBox | Carpeta sincronizada con rsync |
+| `firewalld` no abre puertos | El servicio viene parado | Arrancarlo antes; redes de pods y Services en la zona `trusted` |
+| Maven: "requires Java 17" con Java 17 instalado | El paquete `maven` de Rocky 8 instala Java 8 y lo deja por defecto | Quitar el paquete (se usa `./mvnw`) y fijar `JAVA_HOME` |
+| pip no encuentra `jsonpatch==1.33` | Ansible usaba el Python 3.6 del sistema | Las tareas de pip y Helm usan Python 3.12 |
+| Jenkins en `Init:CrashLoopBackOff` | Los plugins dependientes se resuelven a su última versión y chocan con los fijados | `installLatestSpecifiedPlugins: true` |
 
 ## Problemas conocidos
 
